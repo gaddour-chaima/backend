@@ -4,6 +4,7 @@ const { helmet, cors, limiter } = require('./middleware/security');
 const db = require('./db');
 
 // Route files
+const auth = require('./routes/auth');
 const health = require('./routes/health');
 const chargePoints = require('./routes/chargePoints');
 const transactions = require('./routes/transactions');
@@ -33,13 +34,17 @@ app.use(cors);
 // Rate limiting
 app.use(limiter);
 
+// Auth middleware
+const { protect } = require('./middleware/auth');
+
 // Mount routers
+app.use('/api/auth', auth);
 app.use('/api/health', health);
-app.use('/api/charge-points', chargePoints);
-app.use('/api/transactions', transactions);
-app.use('/api/stats', stats);
-app.use('/api/messages', messages);
-app.use('/api/ai', ai);
+app.use('/api/charge-points', protect, chargePoints);
+app.use('/api/transactions', protect, transactions);
+app.use('/api/stats', protect, stats);
+app.use('/api/messages', protect, messages);
+app.use('/api/ai', protect, ai);
 
 // Additional REST API endpoints
 app.get('/api/charge-points', (req, res) => {

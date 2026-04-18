@@ -8,7 +8,7 @@ const {
   validatePagination,
   validateSorting,
   validateTransactionId,
-  validateStatus,
+  validateTransactionStatus,
   validateDateRange
 } = require('../middleware/validation');
 
@@ -18,7 +18,7 @@ router.route('/')
   .get(
     validatePagination,
     validateSorting,
-    validateStatus,
+    validateTransactionStatus,
     validateDateRange,
     getTransactions
   );

@@ -32,6 +32,10 @@ const validateStatus = [
   query('status').optional().isIn(['Available', 'Preparing', 'Charging', 'SuspendedEVSE', 'SuspendedEV', 'Finishing', 'Reserved', 'Unavailable', 'Faulted'])
 ];
 
+const validateTransactionStatus = [
+  query('status').optional().isIn(['all', 'active', 'completed', 'stopped', 'error', 'failed', 'cancelled'])
+];
+
 const validateAction = [
   query('action').optional().isString()
 ];
@@ -48,6 +52,7 @@ module.exports = {
   validateTransactionId,
   validateMessageId,
   validateStatus,
+  validateTransactionStatus,
   validateAction,
   validateDirection
 };

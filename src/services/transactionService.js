@@ -4,12 +4,35 @@ const { parseDateRange } = require('../utils/date');
 
 class TransactionService {
   static async getTransactions(filters = {}, pagination = {}, sorting = {}) {
-    const { page = 1, limit = 10 } = pagination;
+    const { page = 1, limit = 15 } = pagination; // Default to 15 for better infinite scrolling
     const { sortBy = 'startTime', sortOrder = 'desc' } = sorting;
     const { status, startDate, endDate } = filters;
 
     const query = {};
-    if (status) query.status = status;
+    // Status filter validation: case-insensitive regex matching
+    // 'all' status shows all transactions without filtering
+    // Map common variations to actual enum values
+    if (status && status !== 'all') {
+      let statusFilter = status;
+      // Map common lowercase variations to actual enum values
+      const statusMap = {
+        'active': 'Active',
+        'completed': 'Completed',
+        'failed': 'Failed',
+        'error': 'Failed', // Map 'error' to 'Failed'
+        'cancelled': 'Cancelled',
+        'stopped': 'Cancelled' // Map 'stopped' to 'Cancelled'
+      };
+
+      // If it's a known lowercase variation, use the mapped value
+      if (statusMap[status.toLowerCase()]) {
+        statusFilter = statusMap[status.toLowerCase()];
+        query.status = statusFilter; // Exact match for mapped values
+      } else {
+        // Use regex for case-insensitive matching of other values
+        query.status = { $regex: new RegExp("^" + status + "$", "i") };
+      }
+    }
     const { start, end } = parseDateRange(startDate, endDate);
     if (start) query.startTime = { $gte: start };
     if (end) query.startTime = { ...query.startTime, $lte: end };
