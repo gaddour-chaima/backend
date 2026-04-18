@@ -32,11 +32,14 @@ class ChargePointService {
     // Transform to match API spec
     const chargePoints = rawChargePoints.map(cp => ({
       id: cp.chargePointId,
+      chargePointId: cp.chargePointId,
       vendor: cp.vendor,
       model: cp.model,
       status: cp.status,
       firmwareVersion: cp.firmwareVersion,
-      lastSeen: cp.lastSeen
+      lastSeen: cp.lastSeen,
+      maxCurrent: cp.maxCurrent,
+      maxEnergy: cp.maxEnergy
     }));
 
     const total = await ChargePoint.countDocuments(query);
@@ -50,11 +53,14 @@ class ChargePointService {
     if (!cp) return null;
     return {
       id: cp.chargePointId,
+      chargePointId: cp.chargePointId,
       vendor: cp.vendor,
       model: cp.model,
       status: cp.status,
       firmwareVersion: cp.firmwareVersion,
-      lastSeen: cp.lastSeen
+      lastSeen: cp.lastSeen,
+      maxCurrent: cp.maxCurrent,
+      maxEnergy: cp.maxEnergy
     };
   }
 

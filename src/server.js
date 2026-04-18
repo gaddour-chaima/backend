@@ -132,14 +132,28 @@ function extractSampledValue(sampledValues = []) {
 
     if (Number.isNaN(value)) continue;
 
-    if (measurand === "Voltage") {
-      result.voltage = value;
-    } else if (measurand === "Current.Import") {
-      result.current = value;
-    } else if (measurand === "Power.Active.Import") {
-      result.power = value;
-    } else if (measurand === "Energy.Active.Import.Register") {
-      result.energyWh = value;
+    // Handle different measurand formats for historical storage
+    switch (measurand) {
+      case "Voltage":
+      case "Voltage.L1":
+      case "Voltage.L2":
+      case "Voltage.L3":
+        result.voltage = value;
+        break;
+      case "Current.Import":
+      case "Current":
+        result.current = value;
+        break;
+      case "Power.Active.Import":
+      case "Power.Active.Export":
+      case "Power":
+        result.power = value;
+        break;
+      case "Energy.Active.Import.Register":
+      case "Energy.Active.Import":
+      case "Energy":
+        result.energyWh = value;
+        break;
     }
   }
 
@@ -224,10 +238,14 @@ async function handleMeterValues(chargePointId, payload) {
   const transactionId = payload.transactionId ?? null;
   const meterValueList = Array.isArray(payload.meterValue) ? payload.meterValue : [];
 
+  // Process meter values for historical storage
+
+  // Process each meter value in the list
   for (const mv of meterValueList) {
     const sampledValues = Array.isArray(mv.sampledValue) ? mv.sampledValue : [];
     const extracted = extractSampledValue(sampledValues);
 
+    // Store historical meter value in database
     await MeterValue.create({
       chargePointId,
       connectorId,
@@ -241,10 +259,11 @@ async function handleMeterValues(chargePointId, payload) {
     });
   }
 
+  // Update ChargePoint last seen time
   await ChargePoint.findOneAndUpdate(
     { chargePointId },
-    { lastSeenAt: new Date() },
-    { upsert: true, new: true }
+    { lastSeen: new Date() },
+    { upsert: true, new: true, runValidators: false }
   );
 
   return {};

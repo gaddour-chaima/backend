@@ -27,6 +27,15 @@ const chargePointSchema = new mongoose.Schema({
   lastSeen: {
     type: Date,
     default: Date.now
+  },
+  // Settings & limits (configured per charge point)
+  maxCurrent: {
+    type: Number,
+    default: 32
+  },
+  maxEnergy: {
+    type: Number,
+    default: 22
   }
 }, {
   timestamps: true
