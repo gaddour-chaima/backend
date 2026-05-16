@@ -1,8 +1,6 @@
-const dotenv = require('dotenv');
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const { WebSocketServer } = require('ws');
 const db = require('./db');
-
-dotenv.config();
 
 const app = require('./app');
 const connectDB = require('./config/database');
