@@ -1,9 +1,7 @@
 const dotenv = require('dotenv');
 const { WebSocketServer } = require('ws');
-const mongoose = require('mongoose');
 const db = require('./db');
 
-// Load env vars
 dotenv.config();
 
 const app = require('./app');
@@ -13,7 +11,6 @@ const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || 'localhost';
 const OCPP_PATH = process.env.OCPP_PATH || '/ocpp';
 
-// Connect to database
 connectDB();
 
 const server = app.listen(PORT, HOST, () => {
@@ -23,69 +20,52 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`🌐 External access: ws://10.10.20.20:${PORT}${OCPP_PATH}`);
 });
 
-// =========================
-// OCPP WebSocket Server Integration
-// =========================
-
-// Import models
 const ChargePoint = require('./models/ChargePoint');
 const OcppMessage = require('./models/OcppMessage');
 const MeterValue = require('./models/MeterValue');
 const Transaction = require('./models/Transaction');
 const StatusLog = require('./models/StatusLog');
 
-// WebSocket server for OCPP
 const wss = new WebSocketServer({
-  noServer: true
+  noServer: true,
+  handleProtocols: (protocols) => {
+    if (protocols.has('ocpp1.6')) return 'ocpp1.6';
+    if (protocols.has('ocpp1.6j')) return 'ocpp1.6j';
+    return 'ocpp1.6';
+  }
 });
 
-console.log(`WebSocket server initialized for OCPP upgrades`);
+console.log('WebSocket server initialized for OCPP upgrades');
 
-// Handle WebSocket upgrade requests
 server.on('upgrade', (req, socket, head) => {
   const url = req.url;
   const protocols = req.headers['sec-websocket-protocol'];
 
-  // Check if the path starts with /ocpp/
-  if (!url.startsWith(OCPP_PATH + '/')) {
+  console.log('========== OCPP DEBUG ==========');
+  console.log('OCPP URL:', url);
+  console.log('OCPP Protocols:', protocols);
+  console.log('Remote IP:', req.socket.remoteAddress);
+  console.log('================================');
+
+  if (url !== OCPP_PATH && !url.startsWith(OCPP_PATH + '/')) {
     socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
     socket.destroy();
     return;
   }
 
-  // Check if the protocol includes ocpp1.6
-  if (!protocols || !protocols.split(',').map(p => p.trim()).includes('ocpp1.6')) {
-    socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
-    socket.destroy();
-    return;
-  }
-
-  // Proceed with WebSocket upgrade
   wss.handleUpgrade(req, socket, head, (ws) => {
     wss.emit('connection', ws, req);
   });
 });
 
-// WebSocket server error handling
-wss.on('error', (error) => {
-  console.error('WebSocket server error:', error);
-});
-
-let cpCounter = 0;
 let transactionCounter = 1000;
 
-// Helper functions
 function logInfo(...args) {
-  console.log(new Date().toISOString(), "[INFO]", ...args);
+  console.log(new Date().toISOString(), '[INFO]', ...args);
 }
 
 function logError(...args) {
-  console.error(new Date().toISOString(), "[ERROR]", ...args);
-}
-
-function generateChargePointId() {
-  cpCounter += 1;
-  return `CP_${cpCounter}`;
+  console.error(new Date().toISOString(), '[ERROR]', ...args);
 }
 
 function safeJsonParse(raw) {
@@ -100,22 +80,23 @@ function buildCallResult(uniqueId, payload) {
   return [3, uniqueId, payload];
 }
 
-async function saveMessage({
-  chargePointId,
-  messageTypeId,
-  uniqueId,
-  action,
-  payload,
-  direction
-}) {
-  await OcppMessage.create({
-    chargePointId,
-    messageTypeId,
-    uniqueId,
-    action,
-    payload,
-    direction
-  });
+function buildCallError(uniqueId, errorCode, errorDescription, errorDetails = {}) {
+  return [4, uniqueId, errorCode, errorDescription, errorDetails];
+}
+
+async function saveMessage({ chargePointId, messageTypeId, uniqueId, action, payload, direction }) {
+  try {
+    await OcppMessage.create({
+      chargePointId,
+      messageTypeId,
+      uniqueId,
+      action,
+      payload,
+      direction
+    });
+  } catch (error) {
+    logError('Save OCPP message error:', error.message);
+  }
 }
 
 function extractSampledValue(sampledValues = []) {
@@ -127,31 +108,33 @@ function extractSampledValue(sampledValues = []) {
   };
 
   for (const item of sampledValues) {
-    const measurand = item.measurand || "";
+    const measurand = item.measurand || '';
     const value = Number(item.value);
 
     if (Number.isNaN(value)) continue;
 
-    // Handle different measurand formats for historical storage
     switch (measurand) {
-      case "Voltage":
-      case "Voltage.L1":
-      case "Voltage.L2":
-      case "Voltage.L3":
+      case 'Voltage':
+      case 'Voltage.L1':
+      case 'Voltage.L2':
+      case 'Voltage.L3':
         result.voltage = value;
         break;
-      case "Current.Import":
-      case "Current":
+
+      case 'Current.Import':
+      case 'Current':
         result.current = value;
         break;
-      case "Power.Active.Import":
-      case "Power.Active.Export":
-      case "Power":
+
+      case 'Power.Active.Import':
+      case 'Power.Active.Export':
+      case 'Power':
         result.power = value;
         break;
-      case "Energy.Active.Import.Register":
-      case "Energy.Active.Import":
-      case "Energy":
+
+      case 'Energy.Active.Import.Register':
+      case 'Energy.Active.Import':
+      case 'Energy':
         result.energyWh = value;
         break;
     }
@@ -160,9 +143,7 @@ function extractSampledValue(sampledValues = []) {
   return result;
 }
 
-// OCPP handlers
 async function handleBootNotification(chargePointId, payload) {
-  // Save to MongoDB
   await ChargePoint.findOneAndUpdate(
     { chargePointId },
     {
@@ -170,24 +151,27 @@ async function handleBootNotification(chargePointId, payload) {
       vendor: payload.chargePointVendor || null,
       model: payload.chargePointModel || null,
       firmwareVersion: payload.firmwareVersion || null,
-      status: "Available",
+      serialNumber: payload.chargePointSerialNumber || null,
+      status: 'Available',
       lastSeen: new Date()
     },
-    { upsert: true, new: true }
+    { upsert: true, new: true, runValidators: false }
   );
 
-  // Save to SQLite
-  db.run('INSERT OR REPLACE INTO charge_points (id, vendor, model, firmwareVersion, status, lastSeen) VALUES (?, ?, ?, ?, ?, ?)', [
-    chargePointId,
-    payload.chargePointVendor || null,
-    payload.chargePointModel || null,
-    payload.firmwareVersion || null,
-    'Available',
-    new Date().toISOString()
-  ]);
+  db.run(
+    'INSERT OR REPLACE INTO charge_points (id, vendor, model, firmwareVersion, status, lastSeen) VALUES (?, ?, ?, ?, ?, ?)',
+    [
+      chargePointId,
+      payload.chargePointVendor || null,
+      payload.chargePointModel || null,
+      payload.firmwareVersion || null,
+      'Available',
+      new Date().toISOString()
+    ]
+  );
 
   return {
-    status: "Accepted",
+    status: 'Accepted',
     currentTime: new Date().toISOString(),
     interval: 300
   };
@@ -196,8 +180,11 @@ async function handleBootNotification(chargePointId, payload) {
 async function handleHeartbeat(chargePointId) {
   await ChargePoint.findOneAndUpdate(
     { chargePointId },
-    { lastSeenAt: new Date() },
-    { upsert: true, new: true }
+    {
+      lastSeen: new Date(),
+      lastSeenAt: new Date()
+    },
+    { upsert: true, new: true, runValidators: false }
   );
 
   return {
@@ -209,26 +196,28 @@ async function handleStatusNotification(chargePointId, payload) {
   await StatusLog.create({
     chargePointId,
     connectorId: payload.connectorId ?? null,
-    status: payload.status || "Unknown",
-    errorCode: payload.errorCode || "NoError",
+    status: payload.status || 'Unknown',
+    errorCode: payload.errorCode || 'NoError',
     timestamp: payload.timestamp ? new Date(payload.timestamp) : new Date()
   });
 
   await ChargePoint.findOneAndUpdate(
     { chargePointId },
     {
-      status: payload.status || "Unknown",
+      status: payload.status || 'Unknown',
       lastSeen: new Date()
     },
-    { upsert: true, new: true }
+    { upsert: true, new: true, runValidators: false }
   );
 
-  // Update status in SQLite
-  db.run('UPDATE charge_points SET status = ?, lastSeen = ? WHERE id = ?', [
-    payload.status || "Unknown",
-    new Date().toISOString(),
-    chargePointId
-  ]);
+  db.run(
+    'UPDATE charge_points SET status = ?, lastSeen = ? WHERE id = ?',
+    [
+      payload.status || 'Unknown',
+      new Date().toISOString(),
+      chargePointId
+    ]
+  );
 
   return {};
 }
@@ -238,14 +227,10 @@ async function handleMeterValues(chargePointId, payload) {
   const transactionId = payload.transactionId ?? null;
   const meterValueList = Array.isArray(payload.meterValue) ? payload.meterValue : [];
 
-  // Process meter values for historical storage
-
-  // Process each meter value in the list
   for (const mv of meterValueList) {
     const sampledValues = Array.isArray(mv.sampledValue) ? mv.sampledValue : [];
     const extracted = extractSampledValue(sampledValues);
 
-    // Store historical meter value in database
     await MeterValue.create({
       chargePointId,
       connectorId,
@@ -259,7 +244,6 @@ async function handleMeterValues(chargePointId, payload) {
     });
   }
 
-  // Update ChargePoint last seen time
   await ChargePoint.findOneAndUpdate(
     { chargePointId },
     { lastSeen: new Date() },
@@ -267,6 +251,14 @@ async function handleMeterValues(chargePointId, payload) {
   );
 
   return {};
+}
+
+async function handleAuthorize() {
+  return {
+    idTagInfo: {
+      status: 'Accepted'
+    }
+  };
 }
 
 async function handleStartTransaction(chargePointId, payload) {
@@ -280,29 +272,28 @@ async function handleStartTransaction(chargePointId, payload) {
     idTag: payload.idTag || null,
     startTime: payload.timestamp ? new Date(payload.timestamp) : new Date(),
     startMeter: payload.meterStart ?? null,
-    status: "Running"
+    status: 'Running'
   });
 
   await ChargePoint.findOneAndUpdate(
     { chargePointId },
     {
-      status: "Charging",
+      status: 'Charging',
       lastSeen: new Date()
     },
-    { upsert: true, new: true }
+    { upsert: true, new: true, runValidators: false }
   );
 
   return {
     transactionId,
     idTagInfo: {
-      status: "Accepted"
+      status: 'Accepted'
     }
   };
 }
 
 async function handleStopTransaction(chargePointId, payload) {
   const transactionId = payload.transactionId;
-
   const transaction = await Transaction.findOne({ transactionId });
 
   if (transaction) {
@@ -313,68 +304,86 @@ async function handleStopTransaction(chargePointId, payload) {
       transaction.startMeter != null && payload.meterStop != null
         ? payload.meterStop - transaction.startMeter
         : null;
-    transaction.status = "Completed";
+    transaction.status = 'Completed';
+
     await transaction.save();
   }
 
   await ChargePoint.findOneAndUpdate(
     { chargePointId },
     {
-      status: "Available",
+      status: 'Available',
       lastSeen: new Date()
     },
-    { upsert: true, new: true }
+    { upsert: true, new: true, runValidators: false }
   );
 
   return {
     idTagInfo: {
-      status: "Accepted"
+      status: 'Accepted'
     }
+  };
+}
+
+async function handleDataTransfer(payload) {
+  console.log('📊 DataTransfer:', payload);
+
+  return {
+    status: 'Accepted'
   };
 }
 
 async function handleAction(chargePointId, action, payload) {
   switch (action) {
-    case "BootNotification":
+    case 'BootNotification':
       return handleBootNotification(chargePointId, payload);
-    case "Heartbeat":
+
+    case 'Heartbeat':
       return handleHeartbeat(chargePointId);
-    case "StatusNotification":
+
+    case 'StatusNotification':
       return handleStatusNotification(chargePointId, payload);
-    case "MeterValues":
+
+    case 'MeterValues':
       return handleMeterValues(chargePointId, payload);
-    case "StartTransaction":
+
+    case 'Authorize':
+      return handleAuthorize(chargePointId, payload);
+
+    case 'StartTransaction':
       return handleStartTransaction(chargePointId, payload);
-    case "StopTransaction":
+
+    case 'StopTransaction':
       return handleStopTransaction(chargePointId, payload);
+
+    case 'DataTransfer':
+      return handleDataTransfer(payload);
+
     default:
       logInfo(`Unhandled action: ${action}`);
       return {};
   }
 }
 
-// WebSocket connection handler
-wss.on("connection", (ws, req) => {
+wss.on('connection', (ws, req) => {
   const urlParts = req.url.split('/');
-  const chargePointId = urlParts[2]; // /ocpp/<id>
+  let chargePointId = urlParts[2];
 
   if (!chargePointId) {
-    logError('Invalid OCPP URL: no charge point ID');
-    ws.close();
-    return;
+    chargePointId = 'CP001';
+    logInfo(`No ChargePointId provided in URL, using default: ${chargePointId}`);
   }
 
-  console.log(`🔌 WebSocket connection established: ${chargePointId} from ${req.socket.remoteAddress}`);
-  logInfo(`Charge point connected: ${chargePointId} from ${req.socket.remoteAddress}`);
+  console.log(`🔌 Charge point connected: ${chargePointId} from ${req.socket.remoteAddress}`);
 
-  ws.on("message", async (data) => {
+  ws.on('message', async (data) => {
     const raw = data.toString();
-    logInfo(`Received from ${chargePointId}: ${raw}`);
+    console.log('📩 OCPP IN:', raw);
 
     const message = safeJsonParse(raw);
 
     if (!message || !Array.isArray(message)) {
-      logError(`Invalid JSON frame from ${chargePointId}`);
+      logError(`Invalid OCPP JSON from ${chargePointId}`);
       return;
     }
 
@@ -387,7 +396,7 @@ wss.on("connection", (ws, req) => {
         uniqueId,
         action: action || null,
         payload: payload || {},
-        direction: "IN"
+        direction: 'in'
       });
 
       if (messageTypeId === 2) {
@@ -396,43 +405,42 @@ wss.on("connection", (ws, req) => {
 
         ws.send(JSON.stringify(response));
 
+        console.log('📤 OCPP OUT:', JSON.stringify(response));
+
         await saveMessage({
           chargePointId,
           messageTypeId: 3,
           uniqueId,
           action,
           payload: responsePayload,
-          direction: "OUT"
+          direction: 'out'
         });
-
-        logInfo(`Response sent to ${chargePointId}: ${JSON.stringify(response)}`);
       }
     } catch (error) {
-      logError(`Failed to process message from ${chargePointId}: ${error.message}`);
+      logError(`Failed to process OCPP message from ${chargePointId}: ${error.message}`);
+
+      if (messageTypeId === 2 && uniqueId) {
+        const errorResponse = buildCallError(uniqueId, 'InternalError', error.message, {});
+        ws.send(JSON.stringify(errorResponse));
+      }
     }
   });
 
-  ws.on("close", () => {
-    logInfo(`Charge point disconnected: ${chargePointId}`);
+  ws.on('close', (code, reason) => {
+    logInfo(`Charge point disconnected: ${chargePointId}, code=${code}, reason=${reason.toString()}`);
   });
 
-  ws.on("error", (error) => {
+  ws.on('error', (error) => {
     logError(`WebSocket error from ${chargePointId}: ${error.message}`);
   });
 });
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err, promise) => {
+process.on('unhandledRejection', (err) => {
   console.log(`Error: ${err.message}`);
-  // Close server & exit process
-  server.close(() => {
-    process.exit(1);
-  });
 });
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
   console.log(`Error: ${err.message}`);
-  console.log('Shutting down the server due to Uncaught Exception');
+  console.log('Shutting down due to uncaught exception');
   process.exit(1);
 });
