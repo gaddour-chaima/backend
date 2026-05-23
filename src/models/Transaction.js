@@ -48,6 +48,16 @@ const transactionSchema = new mongoose.Schema({
     type: String,
     enum: ['Active', 'Completed', 'Failed', 'Cancelled'],
     default: 'Active'
+  },
+  // Pricing snapshot (rate at the time the transaction started)
+  pricePerKWh: {
+    type: Number,
+    default: null
+  },
+  // Computed total cost for the session (in currency units, e.g. EUR)
+  cost: {
+    type: Number,
+    default: null
   }
 }, {
   timestamps: true

@@ -39,7 +39,8 @@ class ChargePointService {
       firmwareVersion: cp.firmwareVersion,
       lastSeen: cp.lastSeen,
       maxCurrent: cp.maxCurrent,
-      maxEnergy: cp.maxEnergy
+      maxEnergy: cp.maxEnergy,
+      pricePerKWh: cp.pricePerKWh
     }));
 
     const total = await ChargePoint.countDocuments(query);
@@ -60,7 +61,8 @@ class ChargePointService {
       firmwareVersion: cp.firmwareVersion,
       lastSeen: cp.lastSeen,
       maxCurrent: cp.maxCurrent,
-      maxEnergy: cp.maxEnergy
+      maxEnergy: cp.maxEnergy,
+      pricePerKWh: cp.pricePerKWh
     };
   }
 
@@ -167,13 +169,55 @@ class ChargePointService {
       meterStop: t.stopMeter,
       stopReason: t.stopReason,
       status: t.status,
-      energyConsumed: t.energyConsumedWh || (t.stopMeter && t.startMeter ? t.stopMeter - t.startMeter : 0)
+      energyConsumed: t.energyConsumedWh || (t.stopMeter && t.startMeter ? t.stopMeter - t.startMeter : 0),
+      pricePerKWh: t.pricePerKWh,
+      cost: t.cost
     }));
 
     const total = await Transaction.countDocuments({ chargePointId });
     const meta = getMeta(total, page, limit);
 
     return { transactions, meta };
+  }
+
+  // Admin update for settings (price, limits, etc.)
+  static async updateChargePoint(chargePointId, updates = {}) {
+    const allowed = ['pricePerKWh', 'maxCurrent', 'maxEnergy'];
+    const data = {};
+
+    for (const key of allowed) {
+      if (updates[key] !== undefined) {
+        const val = Number(updates[key]);
+        if (!Number.isNaN(val) && val >= 0) {
+          data[key] = val;
+        }
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
+      return null; // nothing to update
+    }
+
+    const cp = await ChargePoint.findOneAndUpdate(
+      { chargePointId },
+      { $set: data },
+      { new: true, runValidators: true }
+    );
+
+    if (!cp) return null;
+
+    return {
+      id: cp.chargePointId,
+      chargePointId: cp.chargePointId,
+      vendor: cp.vendor,
+      model: cp.model,
+      status: cp.status,
+      firmwareVersion: cp.firmwareVersion,
+      lastSeen: cp.lastSeen,
+      maxCurrent: cp.maxCurrent,
+      maxEnergy: cp.maxEnergy,
+      pricePerKWh: cp.pricePerKWh
+    };
   }
 }
 

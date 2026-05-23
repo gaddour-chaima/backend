@@ -36,6 +36,11 @@ const chargePointSchema = new mongoose.Schema({
   maxEnergy: {
     type: Number,
     default: 22
+  },
+  // Pricing
+  pricePerKWh: {
+    type: Number,
+    default: 0.20
   }
 }, {
   timestamps: true

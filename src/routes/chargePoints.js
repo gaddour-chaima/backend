@@ -4,7 +4,8 @@ const {
   getChargePoint,
   getChargePointStatusHistory,
   getChargePointMeterValues,
-  getChargePointTransactions
+  getChargePointTransactions,
+  updateChargePoint
 } = require('../controllers/chargePointController');
 const {
   validatePagination,
@@ -25,7 +26,8 @@ router.route('/')
   );
 
 router.route('/:chargePointId')
-  .get(validateChargePointId, getChargePoint);
+  .get(validateChargePointId, getChargePoint)
+  .put(validateChargePointId, updateChargePoint);
 
 router.route('/:chargePointId/status-history')
   .get(

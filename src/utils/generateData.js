@@ -6,8 +6,8 @@ const MeterValue = require('../models/MeterValue');
 const OcppMessage = require('../models/OcppMessage');
 const StatusLog = require('../models/StatusLog');
 
-// Charge point IDs to generate data for
-const chargePointIds = Array.from({length: 10}, (_, i) => `cp_${i+1}`); // cp_1 to cp_10
+// Demo charge points (starting from CP002 because CP001 is the real/production one)
+const chargePointIds = Array.from({length: 10}, (_, i) => `CP${String(i + 2).padStart(3, '0')}`); // CP002 to CP011
 
 // Number of transactions per charge point
 const transactionsPerCP = 100;
@@ -24,16 +24,18 @@ async function generateData() {
     await mongoose.connect(process.env.MONGO_URI);
     console.log('Connected to MongoDB');
 
-    // Clear existing data
-    await ChargePoint.deleteMany({});
-    await Transaction.deleteMany({});
-    await MeterValue.deleteMany({});
-    await OcppMessage.deleteMany({});
-    await StatusLog.deleteMany({});
-    console.log('Cleared all existing data');
+    // Only clear demo data (CP002–CP011). Never delete real production data (CP001 and above)
+    const demoIds = chargePointIds;
+    await ChargePoint.deleteMany({ chargePointId: { $in: demoIds } });
+    await Transaction.deleteMany({ chargePointId: { $in: demoIds } });
+    await MeterValue.deleteMany({ chargePointId: { $in: demoIds } });
+    await OcppMessage.deleteMany({ chargePointId: { $in: demoIds } });
+    await StatusLog.deleteMany({ chargePointId: { $in: demoIds } });
+    console.log('Cleared only demo charge points (CP002–CP011). Real data (CP001) is safe.');
 
-    // Ensure charge points exist
+    // Ensure demo charge points exist (with pricing) - CP001 is real and untouched
     for (const id of chargePointIds) {
+      const pricePerKWh = Number((0.15 + Math.random() * 0.20).toFixed(2)); // 0.15 - 0.35 €/kWh
       await ChargePoint.findOneAndUpdate(
         { chargePointId: id },
         {
@@ -41,7 +43,8 @@ async function generateData() {
           vendor: 'VendorX',
           model: 'ModelY',
           status: 'Available',
-          lastSeen: new Date()
+          lastSeen: new Date(),
+          pricePerKWh
         },
         { upsert: true, new: true }
       );
@@ -62,6 +65,11 @@ async function generateData() {
         const startMeter = Math.floor(Math.random() * 10000); // Random start meter
         const stopMeter = status === 'Completed' ? startMeter + energy * 1000 : null;
 
+        // Use the charge point's price (we just set it above)
+        const cpDoc = await ChargePoint.findOne({ chargePointId: cpId });
+        const pricePerKWh = cpDoc?.pricePerKWh ?? 0.20;
+        const cost = status === 'Completed' ? Number((energy * pricePerKWh).toFixed(2)) : null;
+
         const transaction = new Transaction({
           transactionId: Date.now() + Math.random(), // Unique ID
           chargePointId: cpId,
@@ -73,7 +81,9 @@ async function generateData() {
           stopMeter,
           energyConsumedWh: status === 'Completed' ? energy * 1000 : 0,
           stopReason: status === 'Completed' ? 'EVDisconnected' : null,
-          status
+          status,
+          pricePerKWh,
+          cost
         });
 
         await transaction.save();

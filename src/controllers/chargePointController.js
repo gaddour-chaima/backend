@@ -95,10 +95,27 @@ const getChargePointTransactions = asyncHandler(async (req, res) => {
   ApiResponse.success(res, 'Transactions retrieved successfully', result.transactions, result.meta);
 });
 
+// @desc    Update charge point (admin settings: pricePerKWh, maxCurrent, maxEnergy)
+// @route   PUT /api/charge-points/:chargePointId
+// @access  Public (add auth later)
+const updateChargePoint = asyncHandler(async (req, res) => {
+  const { chargePointId } = req.params;
+  const updates = req.body;
+
+  const updated = await ChargePointService.updateChargePoint(chargePointId, updates);
+
+  if (!updated) {
+    return ApiResponse.error(res, 'Charge point not found or no valid fields to update', [], 404);
+  }
+
+  ApiResponse.success(res, 'Charge point updated successfully', updated);
+});
+
 module.exports = {
   getChargePoints,
   getChargePoint,
   getChargePointStatusHistory,
   getChargePointMeterValues,
-  getChargePointTransactions
+  getChargePointTransactions,
+  updateChargePoint
 };

@@ -263,6 +263,10 @@ async function handleStartTransaction(chargePointId, payload) {
   transactionCounter += 1;
   const transactionId = transactionCounter;
 
+  // Snapshot current price per kWh from the charge point (for billing consistency)
+  const cp = await ChargePoint.findOne({ chargePointId });
+  const pricePerKWh = cp && typeof cp.pricePerKWh === 'number' ? cp.pricePerKWh : 0.20;
+
   await Transaction.create({
     transactionId,
     chargePointId,
@@ -270,7 +274,8 @@ async function handleStartTransaction(chargePointId, payload) {
     idTag: payload.idTag || null,
     startTime: payload.timestamp ? new Date(payload.timestamp) : new Date(),
     startMeter: payload.meterStart ?? null,
-    status: 'Running'
+    status: 'Active',
+    pricePerKWh
   });
 
   await ChargePoint.findOneAndUpdate(
@@ -303,6 +308,12 @@ async function handleStopTransaction(chargePointId, payload) {
         ? payload.meterStop - transaction.startMeter
         : null;
     transaction.status = 'Completed';
+
+    // Compute final cost using the price that was snapshotted at StartTransaction
+    if (transaction.pricePerKWh != null && transaction.energyConsumedWh != null) {
+      const kWh = transaction.energyConsumedWh / 1000;
+      transaction.cost = Number((kWh * transaction.pricePerKWh).toFixed(2));
+    }
 
     await transaction.save();
   }

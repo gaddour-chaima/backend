@@ -57,7 +57,9 @@ class TransactionService {
       meterStop: t.stopMeter,
       stopReason: t.stopReason,
       status: t.status,
-      energyConsumed: t.energyConsumedWh || (t.stopMeter && t.startMeter ? t.stopMeter - t.startMeter : 0)
+      energyConsumed: t.energyConsumedWh || (t.stopMeter && t.startMeter ? t.stopMeter - t.startMeter : 0),
+      pricePerKWh: t.pricePerKWh,
+      cost: t.cost
     }));
 
     const total = await Transaction.countDocuments(query);
@@ -67,7 +69,25 @@ class TransactionService {
   }
 
   static async getTransactionById(transactionId) {
-    return await Transaction.findOne({ transactionId });
+    const t = await Transaction.findOne({ transactionId });
+    if (!t) return null;
+
+    // Return consistent shape with price fields (same as list)
+    return {
+      id: t.transactionId,
+      chargePointId: t.chargePointId,
+      connectorId: t.connectorId,
+      idTag: t.idTag,
+      startTime: t.startTime,
+      stopTime: t.stopTime,
+      meterStart: t.startMeter,
+      meterStop: t.stopMeter,
+      stopReason: t.stopReason,
+      status: t.status,
+      energyConsumed: t.energyConsumedWh || (t.stopMeter && t.startMeter ? t.stopMeter - t.startMeter : 0),
+      pricePerKWh: t.pricePerKWh,
+      cost: t.cost
+    };
   }
 
   static async getTransactionSummary() {
@@ -82,7 +102,8 @@ class TransactionService {
           completed: {
             $sum: { $cond: [{ $eq: ['$status', 'Completed'] }, 1, 0] }
           },
-          totalEnergy: { $sum: { $divide: ['$energyConsumedWh', 1000] } } // kWh
+          totalEnergy: { $sum: { $divide: ['$energyConsumedWh', 1000] } }, // kWh
+          totalRevenue: { $sum: { $ifNull: ['$cost', 0] } }
         }
       },
       {
@@ -92,6 +113,7 @@ class TransactionService {
           active: 1,
           completed: 1,
           totalEnergy: 1,
+          totalRevenue: 1,
           avgEnergy: {
             $cond: {
               if: { $gt: ['$total', 0] },
@@ -109,6 +131,7 @@ class TransactionService {
       active: 0,
       completed: 0,
       totalEnergy: 0,
+      totalRevenue: 0,
       avgEnergy: 0
     };
   }
