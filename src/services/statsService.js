@@ -10,6 +10,35 @@ class StatsService {
       this.getTransactionStats()
     ]);
 
+    // Recalculate energy stats to ensure totalEnergy is the sum and avgEnergyPerSession is the average
+    const energyAggregation = await Transaction.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalEnergyWh: { $sum: '$energyConsumedWh' },
+          totalTransactions: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          totalEnergy: '$totalEnergyWh',
+          avgEnergyPerSession: {
+            $cond: {
+              if: { $gt: ['$totalTransactions', 0] },
+              then: { $divide: ['$totalEnergyWh', '$totalTransactions'] },
+              else: 0
+            }
+          }
+        }
+      }
+    ]);
+
+    const { totalEnergy, avgEnergyPerSession } = energyAggregation[0] || {
+      totalEnergy: 0,
+      avgEnergyPerSession: 0
+    };
+
     return {
       totalChargePoints: chargePointStats.totalChargePoints,
       onlineChargePoints: chargePointStats.onlineChargePoints,
@@ -17,8 +46,8 @@ class StatsService {
       chargingChargePoints: chargePointStats.chargingChargePoints,
       totalTransactions: transactionStats.totalTransactions,
       activeTransactions: transactionStats.activeTransactions,
-      totalEnergy: transactionStats.totalEnergy,
-      avgEnergyPerSession: transactionStats.avgEnergyPerSession
+      totalEnergy,
+      avgEnergyPerSession
     };
   }
 

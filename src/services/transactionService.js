@@ -90,51 +90,51 @@ class TransactionService {
     };
   }
 
-  static async getTransactionSummary() {
-    const pipeline = [
-      {
-        $group: {
-          _id: null,
-          total: { $sum: 1 },
-          active: {
-            $sum: { $cond: [{ $eq: ['$status', 'Active'] }, 1, 0] }
-          },
-          completed: {
-            $sum: { $cond: [{ $eq: ['$status', 'Completed'] }, 1, 0] }
-          },
-          totalEnergy: { $sum: { $divide: ['$energyConsumedWh', 1000] } }, // kWh
-          totalRevenue: { $sum: { $ifNull: ['$cost', 0] } }
-        }
-      },
-      {
-        $project: {
-          _id: 0,
-          total: 1,
-          active: 1,
-          completed: 1,
-          totalEnergy: 1,
-          totalRevenue: 1,
-          avgEnergy: {
-            $cond: {
-              if: { $gt: ['$total', 0] },
-              then: { $divide: ['$totalEnergy', '$total'] },
-              else: 0
-            }
-          }
-        }
-      }
-    ];
+    static async getTransactionSummary() {
+     const pipeline = [
+       {
+         $group: {
+           _id: null,
+           total: { $sum: 1 },
+           active: {
+             $sum: { $cond: [{ $eq: ['$status', 'Active'] }, 1, 0] }
+           },
+           completed: {
+             $sum: { $cond: [{ $eq: ['$status', 'Completed'] }, 1, 0] }
+           },
+           totalEnergyWh: { $sum: '$energyConsumedWh' },
+           totalRevenue: { $sum: { $ifNull: ['$cost', 0] } }
+         }
+       },
+       {
+         $project: {
+           _id: 0,
+           total: 1,
+           active: 1,
+           completed: 1,
+           totalEnergy: '$totalEnergyWh',
+           totalRevenue: 1,
+           avgEnergy: {
+             $cond: {
+               if: { $gt: ['$total', 0] },
+               then: { $divide: ['$totalEnergyWh', '$total'] },
+               else: 0
+             }
+           }
+         }
+       }
+     ];
 
-    const result = await Transaction.aggregate(pipeline);
-    return result[0] || {
-      total: 0,
-      active: 0,
-      completed: 0,
-      totalEnergy: 0,
-      totalRevenue: 0,
-      avgEnergy: 0
-    };
-  }
+     const result = await Transaction.aggregate(pipeline);
+     return result[0] || {
+       total: 0,
+       active: 0,
+       completed: 0,
+       totalEnergy: 0,
+       totalRevenue: 0,
+       avgEnergy: 0
+     };
+   }
 }
 
 module.exports = TransactionService;
